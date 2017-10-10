@@ -6,6 +6,7 @@ import java.security.InvalidParameterException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.ArrayList;
 
 /**
  * Decode Morse code from a WAV file.
@@ -48,13 +49,24 @@ public class MorseDecoder {
         /*
          * We should check the results of getNumFrames to ensure that they are safe to cast to int.
          */
-        int totalBinCount = (int) Math.ceil(inputFile.getNumFrames() / BIN_SIZE);
+        int totalBinCount;
+        if (inputFile.getNumFrames() / BIN_SIZE <= Integer.MAX_VALUE) {
+            totalBinCount = (int) Math.ceil(inputFile.getNumFrames() / BIN_SIZE);
+        } else {
+            totalBinCount = 0;
+            // error
+        }
         double[] returnBuffer = new double[totalBinCount];
-
         double[] sampleBuffer = new double[BIN_SIZE * inputFile.getNumChannels()];
+
         for (int binIndex = 0; binIndex < totalBinCount; binIndex++) {
             // Get the right number of samples from the inputFile
+            inputFile.readFrames(sampleBuffer, BIN_SIZE * inputFile.getNumChannels());
             // Sum all the samples together and store them in the returnBuffer
+            for (int s = 0; s < sampleBuffer.length; s++) {
+               returnBuffer[binIndex] += Math.abs(sampleBuffer[s]);
+            }
+
         }
         return returnBuffer;
     }
@@ -81,13 +93,46 @@ public class MorseDecoder {
          * There are four conditions to handle. Symbols should only be output when you see
          * transitions. You will also have to store how much power or silence you have seen.
          */
+        boolean ispower = false, waspower = false, issilence = true, wassilence = false;
+        int powerRun = 0, silenceRun = 0;
+        ArrayList<Character> decoded = new ArrayList<Character>();
+        for (int i = 0; i < powerMeasurements.length; i++) {
+            waspower = ispower;
+            wassilence = issilence;
+            if (powerMeasurements[i] > POWER_THRESHOLD) {
+                ispower = true;
+                issilence = false;
+            } else {
+                ispower = false;
+                issilence = true;
+            }
 
-        // if ispower and waspower
-        // else if ispower and not waspower
-        // else if issilence and wassilence
-        // else if issilence and not wassilence
+            if (ispower && waspower) {
+                powerRun++;
+            } else if (ispower && !waspower) {
+                powerRun = 0;
+                if (silenceRun >= DASH_BIN_COUNT) {
+                    decoded.add(' ');
+                }
 
-        return "";
+            } else if (issilence && wassilence) {
+                silenceRun++;
+            } else if (issilence && !wassilence) {
+                silenceRun = 0;
+                if (powerRun >= DASH_BIN_COUNT) {
+                    decoded.add('-');
+                } else {
+                    decoded.add('.');
+                }
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < decoded.size(); i++) {
+            sb.append(decoded.get(i));
+        }
+
+        String decode = sb.toString();
+        return decode;
     }
 
     /**
